@@ -8,42 +8,12 @@ from asyncpg.exceptions import UniqueViolationError
 from fastapi import HTTPException, status
 
 from .fields import username
+from .users import UserModel
 
 
 class UserLogin(pydantic.BaseModel):
     username: username
     password: pydantic.SecretStr
-
-
-def _create_token(sub: str, expires: datetime, refresh: bool = False):
-    data = {
-        "sub": sub,
-        "exp": expires,
-        "iat": datetime.now(tz=timezone.utc),
-    }
-    if refresh:
-        data["refresh"] = True
-    jwt_settings = muforge.SETTINGS["JWT"]
-    return jwt.encode(data, jwt_settings["secret"], algorithm=jwt_settings["algorithm"])
-
-
-def create_token(sub: str):
-    jwt_settings = muforge.SETTINGS["JWT"]
-    return _create_token(
-        sub,
-        datetime.now(tz=timezone.utc)
-        + timedelta(minutes=jwt_settings["token_expire_minutes"]),
-    )
-
-
-def create_refresh(sub: str):
-    jwt_settings = muforge.SETTINGS["JWT"]
-    return _create_token(
-        sub,
-        datetime.now(tz=timezone.utc)
-        + timedelta(minutes=jwt_settings["refresh_expire_minutes"]),
-        True,
-    )
 
 
 class TokenResponse(pydantic.BaseModel):
@@ -52,15 +22,15 @@ class TokenResponse(pydantic.BaseModel):
     token_type: str = "bearer"
 
     @classmethod
-    def from_str(cls, sub: str) -> "TokenResponse":
-        token = create_token(sub)
-        refresh = create_refresh(sub)
+    def from_str(cls, manager, sub: str) -> "TokenResponse":
+        token = manager.create_token(sub)
+        refresh = manager.create_refresh(sub)
         return cls(access_token=token, refresh_token=refresh, token_type="bearer")
 
     @classmethod
-    def from_uuid(cls, id: uuid.UUID) -> "TokenResponse":
+    def from_uuid(cls, manager, id: uuid.UUID) -> "TokenResponse":
         sub = str(id)
-        return cls.from_str(sub)
+        return cls.from_str(manager, sub)
 
 
 class RefreshTokenModel(pydantic.BaseModel):
@@ -141,24 +111,28 @@ async def authenticate_user(
         """,
         username,
     )
-    if not (
-        retrieved_user
-        and retrieved_user["password_hash"]
-        and crypt_context.verify(password, retrieved_user["password_hash"])
-    ):
+
+    if not retrieved_user:
+        raise HTTPException(status_code=400, detail="Invalid credentials.")
+
+    user_id = retrieved_user["id"]
+
+    pass_hash = retrieved_user["password_hash"]
+
+    if not (pass_hash and crypt_context.verify(password, pass_hash)):
         await conn.execute(
             """
             INSERT INTO loginrecords (user_id, ip_address, success, user_agent)
             VALUES ($1, $2, $3, $4)
             """,
-            retrieved_user["id"],
+            user_id,
             ip,
             False,
             user_agent,
         )
         raise HTTPException(status_code=400, detail="Invalid credentials.")
 
-    if crypt_context.needs_update(retrieved_user["password_hash"]):
+    if crypt_context.needs_update(pass_hash):
         try:
             hashed = crypt_context.hash(password)
         except Exception as e:
@@ -172,7 +146,7 @@ async def authenticate_user(
             VALUES ($1, $2)
             RETURNING id
             """,
-            retrieved_user["id"],
+            user_id,
             hashed,
         )
         password_id = password_row["id"]

@@ -6,7 +6,7 @@ from muforge.plugin import BasePlugin
 class FactionsPlugin(BasePlugin):
     def name(self) -> str:
         return "MuForge Factions"
-    
+
     def slug(self) -> str:
         return "factions"
 
@@ -22,15 +22,15 @@ class FactionsPlugin(BasePlugin):
         from .router import router as fac_router
 
         return {
-            "/factions": factions_router,
+            "factions": factions_router,
         }
-    
+
     def game_static(self) -> str | None:
         return "static"
-    
+
     def game_lockfuncs(self) -> dict[str, typing.Any]:
         return dict()
-    
+
     def depends(self):
         return [("org", ">=0.0.1")]
 

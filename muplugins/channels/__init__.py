@@ -22,7 +22,7 @@ class Channels(BasePlugin):
         from .router import router as channels_router
 
         return {
-            "/channels": channels_router,
+            "channels": channels_router,
         }
 
     def game_static(self) -> str | None:

@@ -24,7 +24,7 @@ CREATE TABLE emails (
     email CITEXT NOT NULL,
     verified_at TIMESTAMPTZ NULL,
     provider TEXT NOT NULL DEFAULT 'standard',
-    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE UNIQUE INDEX ux_emails__user_id_email_provider ON emails (user_id, email, provider);
@@ -76,7 +76,7 @@ CREATE TABLE loginrecords
     user_id    UUID      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ip_address INET      NOT NULL,
-    user_agent VARCHAR(100) NOT NULL,
+    user_agent TEXT NOT NULL,
     success    BOOLEAN   NOT NULL
 );
 
@@ -113,7 +113,7 @@ CREATE INDEX idx_pcs__approved_at ON pcs (approved_at);
 CREATE INDEX idx_pcs__last_active_at ON pcs (last_active_at);
 
 CREATE VIEW pcs_with_user AS
-SELECT p.*, u.username,u.admin_level,MIN(p.admin_mantle,u.admin_level) AS effective_admin 
+SELECT p.*, u.username,u.admin_level,LEAST(p.admin_mantle,u.admin_level) AS effective_admin
 FROM pcs AS p JOIN users AS u ON p.user_id = u.id;
 
 CREATE TABLE pc_components (
@@ -167,8 +167,6 @@ CREATE TABLE actname (
 
 CREATE UNIQUE INDEX ux_actname__actduo_id_name ON actname (actduo_id, name);
 CREATE INDEX idx_actname__actduo_id ON actname (actduo_id);
-
-
 """
 
 downgrade = None

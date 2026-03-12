@@ -2,8 +2,7 @@ import typing
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from muforge.utils.responses import streaming_list
 
 from ..db import pcs as pcs_db
@@ -16,26 +15,33 @@ router = APIRouter()
 
 
 @router.get("/", response_model=typing.List[UserModel])
-async def get_users(user: Annotated[UserModel, Depends(get_current_user)]):
+async def get_users(
+    request: Request, user: Annotated[UserModel, Depends(get_current_user)]
+):
+    db = request.app.state.core.db
     if user.admin_level < 1:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions."
         )
 
-    users = users_db.list_users()
-    return streaming_list(users)
+    stream = db.stream(users_db.list_users)
+    return streaming_list(stream)
 
 
 @router.get("/{user_id}", response_model=UserModel)
 async def get_user(
-    user_id: uuid.UUID, user: Annotated[UserModel, Depends(get_current_user)]
+    request: Request,
+    user_id: uuid.UUID,
+    user: Annotated[UserModel, Depends(get_current_user)],
 ):
+    db = request.app.state.core.db
     if user.admin_level < 1 and user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions."
         )
 
-    found = await users_db.get_user(user_id)
+    async with db.connection() as conn:
+        found = await users_db.get_user(conn, user_id)
     return found
 
 

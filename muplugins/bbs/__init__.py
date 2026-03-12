@@ -22,7 +22,7 @@ class BBS(BasePlugin):
         from .router import router as bbs_router
 
         return {
-            "/bbs": bbs_router,
+            "bbs": bbs_router,
         }
 
     def game_static(self) -> str | None:

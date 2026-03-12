@@ -6,7 +6,7 @@ from muforge.plugin import BasePlugin
 class OrgPlugin(BasePlugin):
     def name(self) -> str:
         return "MuForge Organizations"
-    
+
     def slug(self) -> str:
         return "org"
 
@@ -21,13 +21,11 @@ class OrgPlugin(BasePlugin):
     def game_routers_v1(self) -> dict[str, typing.Any]:
         from .router import router as orgs_router
 
-        return {
-            "/org": orgs_router
-        }
-    
+        return {"org": orgs_router}
+
     def game_static(self) -> str | None:
         return "static"
-    
+
     def game_lockfuncs(self) -> dict[str, typing.Any]:
         return dict()
 

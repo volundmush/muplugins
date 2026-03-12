@@ -8,16 +8,24 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer
 
+from .db.pcs import ActiveAs
+from .db.users import UserModel
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> UserModel:
+async def get_current_user(
+    request: Request, token: Annotated[str, Depends(oauth2_scheme)]
+) -> UserModel:
+    core = request.app.state.core
+    db = core.db
+    jwt_manager = core.jwt_manager
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    jwt_settings = muforge.SETTINGS["JWT"]
+    jwt_settings = jwt_manager.jwt_settings
     try:
         payload = jwt.decode(
             token, jwt_settings["secret"], algorithms=[jwt_settings["algorithm"]]
@@ -27,7 +35,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
     except jwt.PyJWTError as e:
         raise credentials_exception
 
-    async with muforge.PGPOOL.acquire() as conn:
+    async with db.connection() as conn:
         user = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
 
     if user is None:

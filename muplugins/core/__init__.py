@@ -7,10 +7,10 @@ import asyncpg
 import orjson
 from lark import Lark
 from loguru import logger
-
 from muforge.plugin import BasePlugin
 
 from .database import INIT_SQL, Database
+from .jwt import JWTManager
 
 
 def decode_json(data: bytes):
@@ -41,7 +41,7 @@ async def perform_migrations(conn: asyncpg.Connection, app):
             continue
         mi = p.game_migrations()
         migrations[p.slug()] = mi
-        for k, v in mi.items():
+        for k, v in mi:
             all_migrations.append((p.slug(), k, v))
 
     migration_order: list[tuple[str, str, typing.Any]] = list()
@@ -85,18 +85,33 @@ async def perform_migrations(conn: asyncpg.Connection, app):
             continue
         up = getattr(migration, "upgrade", None)
 
+        logger.info(f"Performing migration {migration_name} of plugin {plugin_slug}")
+
         # up can either be a string, none, or an async callable that should take the connection object.
+        success = False
         if isinstance(up, str):
             await conn.execute(up)
             performed += 1
+            success = True
         elif callable(up):
             await up(conn)
             performed += 1
+            success = True
         else:
             logger.warning(
                 f"Migration {migration_name} of plugin {plugin_slug} has no upgrade path. Skipping."
             )
             continue
+
+        if success:
+            await conn.execute(
+                """
+                INSERT INTO plugin_migrations (plugin_slug, migration_name, applied_at)
+                VALUES ($1, $2, NOW())
+            """,
+                plugin_slug,
+                migration_name,
+            )
 
     logger.info(f"Performed {performed} migrations.")
 
@@ -111,6 +126,7 @@ class Core(BasePlugin):
         self.commands_priority: dict[int, list[type]] = defaultdict(list)
         self.lockparser = None
         self.lockfuncs: dict[str, typing.Awaitable] = dict()
+        self.jwt_manager = None
 
     def name(self) -> str:
         return "MuForge Core"
@@ -141,9 +157,9 @@ class Core(BasePlugin):
         from .routers.users import router as users_router
 
         return {
-            "/auth": auth_router,
-            "/users": users_router,
-            "/pcs": pcs_router,
+            "auth": auth_router,
+            "users": users_router,
+            "pcs": pcs_router,
         }
 
     def game_static(self) -> str | None:
@@ -166,6 +182,7 @@ class Core(BasePlugin):
 
     async def setup_final(self):
         self.app.fastapi_instance.state.core = self
+        self.jwt_manager = JWTManager(self)
         await self.setup_crypt()
         await self.setup_database()
         await self.setup_lockfuncs()

@@ -17,24 +17,26 @@ async def handle_login(request: Request, username: str, password: str) -> TokenR
 
     crypt_context = request.app.state.core.crypt_context
     db = request.app.state.core.db
+    jwt_manager = request.app.state.core.jwt_manager
 
     async with db.transaction() as conn:
         result = await auth_db.authenticate_user(
             conn, crypt_context, username, password, ip, user_agent
         )
-    return TokenResponse.from_uuid(result.id)
+    return TokenResponse.from_uuid(jwt_manager, result.id)
 
 
 @router.post("/register", response_model=TokenResponse)
 async def register(request: Request, data: Annotated[UserLogin, Body()]):
     crypt_context = request.app.state.core.crypt_context
     db = request.app.state.core.db
+    jwt_manager = request.app.state.core.jwt_manager
 
     async with db.transaction() as conn:
         user = await auth_db.register_user(
             conn, crypt_context, data.username, data.password.get_secret_value()
         )
-    token = TokenResponse.from_uuid(user.id)
+    token = TokenResponse.from_uuid(jwt_manager, user.id)
     return token
 
 
@@ -48,7 +50,8 @@ async def login(
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(request: Request, ref: Annotated[RefreshTokenModel, Body()]):
     core = request.app.state.core
-    jwt_settings = core.settings.get("jwt", dict())
+    jwt_manager = core.jwt_manager
+    jwt_settings = jwt_manager.settings
 
     try:
         payload = jwt.decode(
@@ -75,4 +78,4 @@ async def refresh_token(request: Request, ref: Annotated[RefreshTokenModel, Body
     async with db.connection() as conn:
         user = await users_db.get_user(conn, sub)
 
-    return TokenResponse.from_uuid(sub)
+    return TokenResponse.from_uuid(jwt_manager, sub)
